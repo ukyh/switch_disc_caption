@@ -14,7 +14,7 @@ from .CaptionModel import CaptionModel
 from .AttModel import pack_wrapper, AttModel
 
 class AttEnsemble(AttModel):
-    def __init__(self, models, weights=None):
+    def __init__(self, opt, vocab, models, weights=None):
         CaptionModel.__init__(self)
         # super(AttEnsemble, self).__init__()
 
@@ -25,6 +25,11 @@ class AttEnsemble(AttModel):
         self.ss_prob = 0
         weights = weights or [1.0] * len(self.models)
         self.register_buffer('weights', torch.tensor(weights))
+
+        self.bos_idx = getattr(opt, 'bos_idx', 0)
+        self.eos_idx = getattr(opt, 'eos_idx', 0)
+        self.pad_idx = getattr(opt, 'pad_idx', 0)
+        self.vocab = vocab
 
     def init_hidden(self, batch_size):
         state = [m.init_hidden(batch_size) for m in self.models]
@@ -61,6 +66,7 @@ class AttEnsemble(AttModel):
         return tuple(zip(*[m._prepare_feature(*args) for m in self.models]))
 
     def _old_sample_beam(self, fc_feats, att_feats, att_masks=None, opt={}):
+    # def forward(self, fc_feats, att_feats, att_masks=None, mode=None, opt={}):
         beam_size = opt.get('beam_size', 10)
         batch_size = fc_feats.size(0)
 

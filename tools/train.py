@@ -17,7 +17,7 @@ from collections import defaultdict
 
 import captioning.utils.opts as opts
 import captioning.models as models
-from captioning.data.dataloader import *
+# from captioning.data.dataloader import *
 import skimage.io
 import captioning.utils.eval_utils as eval_utils
 import captioning.utils.misc as utils
@@ -56,6 +56,7 @@ def train(opt):
             for checkme in need_be_same:
                 assert getattr(saved_model_opt, checkme) == getattr(opt, checkme), "Command line argument and saved model disagree on '%s' " % checkme
     infos['opt'] = opt
+    print('## opt: {}'.format(opt))
 
     #########################
     # Build logger
@@ -76,6 +77,7 @@ def train(opt):
     model = models.setup(opt).cuda()
     del opt.vocab
     # Load pretrained weights:
+    # NOTE: `model.pth` is a model in the last epoch
     if opt.start_from is not None and os.path.isfile(os.path.join(opt.start_from, 'model.pth')):
         model.load_state_dict(torch.load(os.path.join(opt.start_from, 'model.pth')))
     
@@ -115,6 +117,7 @@ def train(opt):
     loader.load_state_dict(infos['loader_state_dict'])
     if opt.load_best_score == 1:
         best_val_score = infos.get('best_val_score', None)
+        best_val_loss = infos.get('best_val_loss', None)
     if opt.noamopt:
         optimizer._step = iteration
     # flag indicating finish of an epoch
@@ -159,10 +162,9 @@ def train(opt):
                     init_scorer(opt.cached_tokens)
                 else:
                     struc_flag = False
-                if opt.drop_worst_after != -1 and epoch >= opt.drop_worst_after:
-                    drop_worst_flag = True
-                else:
-                    drop_worst_flag = False
+                
+                if opt.use_btw:
+                    init_scorer(opt.cached_tokens)
 
                 epoch_done = False
                     
@@ -182,13 +184,18 @@ def train(opt):
             fc_feats, att_feats, labels, masks, att_masks = tmp
             
             optimizer.zero_grad()
-            model_out = dp_lw_model(fc_feats, att_feats, labels, masks, att_masks, data['gts'], torch.arange(0, len(data['gts'])), sc_flag, struc_flag, drop_worst_flag)
-
-            if not drop_worst_flag:
-                loss = model_out['loss'].mean()
+            if opt.use_btw:
+                model_out = dp_lw_model(
+                    fc_feats, att_feats, labels, masks, att_masks, data['gts'], torch.arange(0, len(data['gts'])),
+                    sc_flag, struc_flag, sim_gts=data['sim_gts'], gts_btw=data['gts_btw']
+                )
             else:
-                loss = model_out['loss']
-                loss = torch.topk(loss, k=int(loss.shape[0] * (1-opt.drop_worst_rate)), largest=False)[0].mean()
+                model_out = dp_lw_model(
+                    fc_feats, att_feats, labels, masks, att_masks, data['gts'], torch.arange(0, len(data['gts'])),
+                    sc_flag, struc_flag
+                )
+
+            loss = model_out['loss'].mean()
 
             loss.backward()
             if opt.grad_clip_value != 0:
@@ -243,8 +250,12 @@ def train(opt):
             if (iteration % opt.save_checkpoint_every == 0 and not opt.save_every_epoch) or \
                 (epoch_done and opt.save_every_epoch):
                 # eval model
-                eval_kwargs = {'split': 'val',
-                                'dataset': opt.input_json}
+                eval_kwargs = {
+                    'split': 'val',
+                    'dataset': opt.input_json,
+                    'tau_norm': 0,
+                    'tau_logit': 1,
+                }
                 eval_kwargs.update(vars(opt))
                 val_loss, predictions, lang_stats = eval_utils.eval_split(
                     dp_model, lw_model.crit, loader, eval_kwargs)
@@ -272,17 +283,25 @@ def train(opt):
                 if best_val_score is None or current_score > best_val_score:
                     best_val_score = current_score
                     best_flag = True
+                if best_val_loss is None or val_loss < best_val_loss:
+                    best_val_loss = val_loss
 
                 # Dump miscalleous informations
                 infos['best_val_score'] = best_val_score
+                infos['best_val_loss'] = best_val_loss
 
                 utils.save_checkpoint(opt, model, infos, optimizer, histories)
                 if opt.save_history_ckpt:
                     utils.save_checkpoint(opt, model, infos, optimizer,
                         append=str(epoch) if opt.save_every_epoch else str(iteration))
+                print('## Scores at epoch {}: {}'.format(str(epoch), lang_stats))
 
                 if best_flag:
                     utils.save_checkpoint(opt, model, infos, optimizer, append='best')
+                    print('## Best model saved at epoch: {}'.format(str(epoch)))
+                # if best_loss_flag:
+                #     utils.save_checkpoint(opt, model, infos, optimizer, append='bestvaloss')
+                #     print('## Best val-loss model saved at epoch: {}'.format(str(epoch)))
 
     except (RuntimeError, KeyboardInterrupt):
         print('Save ckpt on exception ...')
@@ -293,4 +312,8 @@ def train(opt):
 
 
 opt = opts.parse_opt()
+if opt.use_btw:
+    from captioning.data.dataloader_btw import *
+else:
+    from captioning.data.dataloader import *
 train(opt)

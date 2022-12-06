@@ -16,6 +16,8 @@ from .cachedTransformer import TransformerModel as cachedTransformer
 from .BertCapModel import BertCapModel
 from .M2Transformer import M2TransformerModel
 from .AoAModel import AoAModel
+from .cachedPoETransformer import TransformerModel as cachedPoETransformer
+from .PoEAttModel import PoEAtt2in2Model, PoEUpDownModel
 
 def setup(opt):
     if opt.caption_model in ['fc', 'show_tell']:
@@ -46,7 +48,7 @@ def setup(opt):
     elif opt.caption_model == 'adaattmo':
         model = AdaAttMOModel(opt)
     # Top-down attention model
-    elif opt.caption_model in ['topdown', 'updown']:
+    elif opt.caption_model in ['topdown', 'updown', 'butd']:
         model = UpDownModel(opt)
     # StackAtt
     elif opt.caption_model == 'stackatt':
@@ -67,6 +69,14 @@ def setup(opt):
         model = BertCapModel(opt)
     elif opt.caption_model == 'm2transformer':
         model = M2TransformerModel(opt)
+    # PoE
+    elif opt.caption_model == 'poe':
+        assert opt.cached_transformer == True
+        model = cachedPoETransformer(opt)
+    elif opt.caption_model == 'poe_a2i2':
+        model = PoEAtt2in2Model(opt)
+    elif opt.caption_model == 'poe_butd':
+        model = PoEUpDownModel(opt)
     else:
         raise Exception("Caption model not supported: {}".format(opt.caption_model))
 

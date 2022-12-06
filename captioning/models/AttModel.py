@@ -31,7 +31,7 @@ bad_endings += ['the']
 
 def sort_pack_padded_sequence(input, lengths):
     sorted_lengths, indices = torch.sort(lengths, descending=True)
-    tmp = pack_padded_sequence(input[indices], sorted_lengths.cpu(), batch_first=True)
+    tmp = pack_padded_sequence(input[indices], sorted_lengths, batch_first=True)
     inv_ix = indices.clone()
     inv_ix[indices] = torch.arange(0,len(indices)).type_as(inv_ix)
     return tmp, inv_ix
@@ -61,11 +61,14 @@ class AttModel(CaptionModel):
         self.fc_feat_size = opt.fc_feat_size
         self.att_feat_size = opt.att_feat_size
         self.att_hid_size = opt.att_hid_size
+        if 'tau_logit' in opt:  # in eval
+            self.tau_logit = opt.tau_logit
+        else:
+            self.tau_logit = 1.0
 
         self.bos_idx = getattr(opt, 'bos_idx', 0)
         self.eos_idx = getattr(opt, 'eos_idx', 0)
         self.pad_idx = getattr(opt, 'pad_idx', 0)
-        self.unk_idx = getattr(opt, 'unk_idx', None)
 
         self.use_bn = getattr(opt, 'use_bn', 0)
 
@@ -169,9 +172,9 @@ class AttModel(CaptionModel):
 
         output, state = self.core(xt, fc_feats, att_feats, p_att_feats, state, att_masks)
         if output_logsoftmax:
-            logprobs = F.log_softmax(self.logit(output), dim=1)
+            logprobs = F.log_softmax(self.logit(output) * self.tau_logit, dim=1)
         else:
-            logprobs = self.logit(output)
+            logprobs = self.logit(output) * self.tau_logit
 
         return logprobs, state
 

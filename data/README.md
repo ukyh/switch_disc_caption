@@ -1,22 +1,27 @@
-# Prepare data
+<!-- # Prepare data -->
 
-Note: every preprocessed file or preextracted features can be found in [link](https://drive.google.com/open?id=1eCdz62FAVCGogOuNhy87Nmlo5_I0sH2J).
+<!-- Note: every preprocessed file or preextracted features can be found in [link](https://drive.google.com/open?id=1eCdz62FAVCGogOuNhy87Nmlo5_I0sH2J). -->
 
-## COCO
+# Prepare COCO data
 
-### Download COCO captions and preprocess them
+## Download COCO captions and preprocess them
 
 Download preprocessed coco captions from [link](http://cs.stanford.edu/people/karpathy/deepimagesent/caption_datasets.zip) from Karpathy's homepage. Extract `dataset_coco.json` from the zip file and copy it in to `data/`. This file provides preprocessed captions and also standard train-val-test splits.
 
-Then do:
+Then, download [cocotalk_disc_text.zip](https://drive.google.com/file/d/12LY3FzL_zYHDUzp_pez9fvtA3LaATCZL/view?usp=sharing) and unzip it into `data/`.  
+`unzip cocotalk_disc_text.zip -d data/`
+
+**NOTE:** Please make sure to use the files under `cocotalk_disc_text.zip` to keep the word-to-index conversion exactly the same as the one used in pre-traind models.
+
+<!-- Then do:
 
 ```bash
 $ python scripts/prepro_labels.py --input_json data/dataset_coco.json --output_json data/cocotalk.json --output_h5 data/cocotalk
 ```
 
-`prepro_labels.py` will map all words that occur <= 5 times to a special `UNK` token, and create a vocabulary for all the remaining words. The image information and vocabulary are dumped into `data/cocotalk.json` and discretized caption data are dumped into `data/cocotalk_label.h5`.
+`prepro_labels.py` will map all words that occur <= 5 times to a special `UNK` token, and create a vocabulary for all the remaining words. The image information and vocabulary are dumped into `data/cocotalk.json` and discretized caption data are dumped into `data/cocotalk_label.h5`. -->
 
-### Image features option 1: Resnet features
+<!-- ### Image features option 1: Resnet features
 
 #### Download COCO dataset and pre-extract the image features(if you want to extract your self)
 
@@ -39,11 +44,12 @@ $ python scripts/prepro_feats.py --input_json data/dataset_coco.json --output_di
 
 #### Download preextracted features
 
-To skip the preprocessing, you can download and decompress `cocotalk_att.tar` and `cocotalk_fc.tar` from the link provided at the beginning.)
+To skip the preprocessing, you can download and decompress `cocotalk_att.tar` and `cocotalk_fc.tar` from the link provided at the beginning.) -->
 
-### Image features option 2: Bottom-up features (current standard)
+## Image features: Bottom-up features (current standard)
 
-#### Convert from peteanderson80's original file
+### Convert from peteanderson80's original file
+
 Download pre-extracted features from [link](https://github.com/peteanderson80/bottom-up-attention). You can either download adaptive one or fixed one.
 
 For example:
@@ -51,22 +57,26 @@ For example:
 mkdir data/bu_data; cd data/bu_data
 wget https://imagecaption.blob.core.windows.net/imagecaption/trainval.zip
 unzip trainval.zip
-
 ```
 
 Then:
 
 ```bash
-python script/make_bu_data.py --output_dir data/cocobu
+python scripts/make_bu_data.py --output_dir data/cocobu
 ```
 
-This will create `data/cocobu_fc`(not necessary), `data/cocobu_att` and `data/cocobu_box`. If you want to use bottom-up feature, you can just replace all `"cocotalk"` with `"cocobu"` in the training/test scripts.
+This will create `data/cocobu_fc`, `data/cocobu_att` and `data/cocobu_box`. If you want to use bottom-up feature, you can just replace all `"cocotalk"` with `"cocobu"` in the training/test scripts.
 
-#### Download converted files
+### Download converted files
 
 bottomup-att: [link](https://drive.google.com/file/d/1hun0tsel34aXO4CYyTRIvHJkcbZHwjrD/view?usp=sharing)
 
-### Image features option 3:  Vilbert 12 in 1 features.
+## Acknowledgment
+
+`similar_set_id/` is provided by https://github.com/WangJiuniu/DistinctiveCap.
+Thanks to the authors.
+
+<!-- ### Image features option 3:  Vilbert 12 in 1 features.
 In vilbert-12-in-1, the image features used is similar to the original bottom-up feature but with a model with renext152 backbone.
 
 Here is the link of the converted lmdb(More compressed than the original one provided by jiasen):
@@ -119,4 +129,4 @@ transform('train_ids.txt', 'train_ims.npy')
 transform('test_ids.txt', 'test_ims.npy')
 
 torch.save(out, 'f30kbu_att.pth')
-```
+``` -->

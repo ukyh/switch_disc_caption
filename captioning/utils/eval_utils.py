@@ -5,6 +5,7 @@ from __future__ import print_function
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Variable
 
 import numpy as np
 import json
@@ -15,6 +16,7 @@ import time
 import os
 import sys
 from . import misc as utils
+import os
 
 # load coco-caption if available
 try:
@@ -69,7 +71,17 @@ def language_eval(dataset, preds, preds_n, eval_kwargs, split):
 
     # encoder.FLOAT_REPR = lambda o: format(o, '.3f')
 
-    cache_path = os.path.join('eval_results/', '.cache_'+ model_id + '_' + split + '.json')
+    cache_path = '.cache_'+ model_id
+    if eval_kwargs['tau_norm'] > 0:
+        cache_path = '.cache_'+ model_id + '_tauN' + str(eval_kwargs['tau_norm'])
+    if eval_kwargs['tau_logit'] != 1:
+        cache_path = '.cache_'+ model_id + '_tauL' + str(eval_kwargs['tau_logit'])
+    if 'poe_decode' in eval_kwargs and eval_kwargs['poe_decode'] != -1:
+        cache_path = '.bpdec{}_{}'.format(eval_kwargs['poe_decode'], cache_path)
+    if eval_kwargs['sample_method'] != 'greedy':
+        cache_path = '{}_{}'.format(cache_path, eval_kwargs['sample_method'])
+    cache_path = cache_path + '_' + split + '.json'
+    cache_path = os.path.join('eval_results/', cache_path)
 
     coco = getCOCO(dataset)
     valids = coco.getImgIds()
@@ -103,7 +115,18 @@ def language_eval(dataset, preds, preds_n, eval_kwargs, split):
 
     if len(preds_n) > 0:
         from . import eval_multi
-        cache_path_n = os.path.join('eval_results/', '.cache_'+ model_id + '_' + split + '_n.json')
+        cache_path_n = '.cache_'+ model_id
+        if eval_kwargs['tau_norm'] > 0:
+            cache_path_n = '.cache_'+ model_id + '_tauN' + str(eval_kwargs['tau_norm'])
+        if eval_kwargs['tau_logit'] != 1:
+            cache_path_n = '.cache_'+ model_id + '_tauL' + str(eval_kwargs['tau_logit'])
+        if 'poe_decode' in eval_kwargs and eval_kwargs['poe_decode'] != -1:
+            cache_path_n = '.bpdec{}_{}'.format(eval_kwargs['poe_decode'], cache_path_n)
+        if eval_kwargs['sample_method'] != 'greedy':
+            cache_path_n = '{}_{}'.format(cache_path_n, eval_kwargs['sample_method'])
+        cache_path_n = cache_path_n + '_' + split + '.json'
+        cache_path_n = os.path.join('eval_results/', cache_path_n)
+
         allspice = eval_multi.eval_allspice(dataset, preds_n, model_id, split)
         out.update(allspice['overall'])
         div_stats = eval_multi.eval_div_stats(dataset, preds_n, model_id, split)
@@ -119,7 +142,18 @@ def language_eval(dataset, preds, preds_n, eval_kwargs, split):
             json.dump({'allspice': allspice, 'div_stats': div_stats, 'oracle': oracle, 'self_cider': self_cider}, outfile)
         
     out['bad_count_rate'] = sum([count_bad(_['caption']) for _ in preds_filt]) / float(len(preds_filt))
-    outfile_path = os.path.join('eval_results/', model_id + '_' + split + '.json')
+    outfile_path = model_id
+    if eval_kwargs['tau_norm'] > 0:
+        outfile_path = model_id + '_tauN' + str(eval_kwargs['tau_norm'])
+    if eval_kwargs['tau_logit'] != 1:
+        outfile_path = model_id + '_tauL' + str(eval_kwargs['tau_logit'])
+    if 'poe_decode' in eval_kwargs and eval_kwargs['poe_decode'] != -1:
+        outfile_path = 'bpdec{}_{}'.format(eval_kwargs['poe_decode'], outfile_path)
+    if eval_kwargs['sample_method'] != 'greedy':
+        outfile_path = '{}_{}'.format(outfile_path, eval_kwargs['sample_method'])
+    outfile_path = outfile_path + '_' + split + '.json'
+    outfile_path = os.path.join('eval_results/', outfile_path)
+
     with open(outfile_path, 'w') as outfile:
         json.dump({'overall': out, 'imgToEval': imgToEval}, outfile)
 
@@ -217,7 +251,6 @@ def eval_split(model, crit, loader, eval_kwargs={}):
         n_predictions = sorted(n_predictions, key=lambda x: x['perplexity'])
     if not os.path.isdir('eval_results'):
         os.mkdir('eval_results')
-    torch.save((predictions, n_predictions), os.path.join('eval_results/', '.saved_pred_'+ eval_kwargs['id'] + '_' + split + '.pth'))
     if lang_eval == 1:
         lang_stats = language_eval(dataset, predictions, n_predictions, eval_kwargs, split)
 

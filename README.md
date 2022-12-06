@@ -1,8 +1,78 @@
-# An Image Captioning codebase
+# Switch to Discriminative Image Captioning
 
-This is a codebase for image captioning research.
+The code for our paper, **[Switching to Discriminative Image Captioning by Relieving a Bottleneck of Reinforcement Learning]()** (WACV 2023).
+Our methods implemented here provide a **switch to discriminative image captioning**: given off-the-shelf captioning models trained with reinforcement learning, our methods enable them to describe characteristic details of input images with only a lightweight fine-tuning.
 
-It supports:
+
+### Acknowledgment
+The code is based on [self-critical.pytorch](https://github.com/ruotianluo/self-critical.pytorch).
+We thank the authors of the repository, the original [neuraltalk2](https://github.com/karpathy/neuraltalk2), and awesome PyTorch team.
+
+
+## Setup
+
+```bash
+git clone https://github.com/ukyh/switch_disc_caption.git
+cd switch_disc_caption
+git submodule update --init --recursive
+
+conda create --name switch_disc_cap python=3.6
+conda activate switch_disc_cap
+
+pip install -r requirements.txt
+```
+
+
+## Downloads
+
+1. Follow the instruction in [data/README.md](data/README.md) to download and preprcess data.
+2. Follow the instruction in [coco-caption/README.md](coco-caption/README.md) to download evaluation tools.
+3. Download pre-trained models from [MODEL_ZOO.md](MODEL_ZOO.md). We used `Att2in+self_critical` (att2in_scst), `UpDown+self_critical` (updown_scst), and `Transformer+self_critical` (trans_scst) for the experiments of our paper. To run `expt_scripts`, downloaded models have to be placed as follows:
+```
+./saved_models/
+  ├── att2in_scst/
+  │     ├── model-best.pth
+  │     └── infos_a2i2_sc-best.pkl
+  ├── updown_scst/
+  │     ├── model-best.pth
+  │     └── infos_tds_sc-best.pkl
+  └── trans_scst/
+        ├── model-best.pth
+        └── infos_trans_scl-best.pkl
+```
+
+4. (Optional: not necessary if you just want to try our fine-tuning)  
+If you want to train RL models in this repo, get the cache for calculating cider score:
+```bash
+python scripts/prepro_ngrams.py --input_json data/dataset_coco.json --dict_json data/cocotalk.json --output_pkl data/coco-train --split train
+```
+
+
+## Run
+
+### Fine-Tuning
+
+Run `sh expt_scripts/[SELECT_SCRIPT].sh`.  
+It returns a fine-tuned model under `saved_models` and `.json` output files (MS COCO Karpathy val/test split) under `eval_results`.
+
+We release the fine-tuned models and output files [here](https://drive.google.com/drive/folders/1MtTL9VwpZvhr_5PK9WgXeySyi56tzItc?usp=sharing).
+
+
+### Evaluation
+
+Evaluation uses the output files under `eval_results`.
+Use the following repositories/scripts for evaluation in each metric.  
+**NOTE:** DO NOT use the files start with `tmpeval_` as the decoding methods of those outputs (beam size and BP decoding) are not specified correctly.
+
+* `CIDEr`, `SPICE`, `CLIPScore`, `RefCLIPScore`: https://github.com/ukyh/clipscore_cocout.git
+* `R@K`: https://github.com/ukyh/vsepp_cocout.git
+* `TIGEr`: https://github.com/ukyh/tiger_cocout.git
+* `improved BERTScore`: https://github.com/ukyh/bertspp_cocout.git
+* `Unique-1/S`, `Length`, `Repetition`: `python stats_vocab.py eval_results/FILE_NAME.json`
+* `OOR`: `python stats_oor.py eval_results/FILE_NAME.json`
+
+
+<!-- It supports:
 - Self critical training from [Self-critical Sequence Training for Image Captioning](https://arxiv.org/abs/1612.00563)
 - Bottom up feature from [ref](https://arxiv.org/abs/1707.07998).
 - Test time ensemble
@@ -66,7 +136,7 @@ For more options, see `opts.py`.
 
 <!-- **A few notes on training.** To give you an idea, with the default settings one epoch of MS COCO images is about 11000 iterations. After 1 epoch of training results in validation loss ~2.5 and CIDEr score of ~0.68. By iteration 60,000 CIDEr climbs up to about ~0.84 (validation loss at about 2.4 (under scheduled sampling)). -->
 
-### Train using self critical
+<!-- ### Train using self critical
 
 First you should preprocess the dataset and get the cache for calculating cider score:
 ```
@@ -141,13 +211,20 @@ You can download the preprocessed file `cocotest.json`, `cocotest_bu_att` and `c
 
 ## For more advanced features:
 
-Checkout [ADVANCED.md](ADVANCED.md).
+Checkout [ADVANCED.md](ADVANCED.md). -->
 
 ## Reference
 
 If you find this repo useful, please consider citing (no obligation at all):
 
 ```
+@inproceedings{honda2023switch,
+  title={Switching to Discriminative Image Captioning by Relieving a Bottleneck of Reinforcement Learning},
+  author={Honda, Ukyo and Taro, Watanabe and Yuji, Matsumoto},
+  booktitle={Proceedings of the IEEE/CVF Winter Conference on Applications of Computer Vision (WACV)},
+  year={2023}
+}
+
 @article{luo2018discriminability,
   title={Discriminability objective for training descriptive captions},
   author={Luo, Ruotian and Price, Brian and Cohen, Scott and Shakhnarovich, Gregory},
@@ -156,8 +233,8 @@ If you find this repo useful, please consider citing (no obligation at all):
 }
 ```
 
-Of course, please cite the original paper of models you are using (You can find references in the model files).
+<!-- Of course, please cite the original paper of models you are using (You can find references in the model files).
 
 ## Acknowledgements
 
-Thanks the original [neuraltalk2](https://github.com/karpathy/neuraltalk2) and awesome PyTorch team.
+Thanks the original [neuraltalk2](https://github.com/karpathy/neuraltalk2) and awesome PyTorch team. -->

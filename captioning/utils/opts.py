@@ -1,5 +1,6 @@
 from __future__ import print_function
 import argparse
+import os
 
 
 def if_use_feat(caption_model):
@@ -11,7 +12,7 @@ def if_use_feat(caption_model):
     elif caption_model in ['updown', 'topdown']:
         use_fc, use_att = True, True
     else:
-        use_att, use_fc = True, False
+        use_att, use_fc = True, True
     return use_fc, use_att
 
 
@@ -108,6 +109,7 @@ def parse_opt():
                     help='epsilon that goes into denominator for smoothing')
     parser.add_argument('--weight_decay', type=float, default=0,
                     help='weight_decay')
+    
     # Transformer
     parser.add_argument('--label_smoothing', type=float, default=0,
                     help='')
@@ -139,6 +141,28 @@ def parse_opt():
     parser.add_argument('--scheduled_sampling_max_prob', type=float, default=0.25, 
                     help='Maximum scheduled sampling prob.')
 
+    # AoA settings
+    parser.add_argument('--mean_feats', type=int, default=1,
+                    help='use mean pooling of feats?')
+    parser.add_argument('--refine', type=int, default=1,
+                    help='refining feature vectors?')
+    parser.add_argument('--refine_aoa', type=int, default=1,
+                    help='use aoa in the refining module?')
+    parser.add_argument('--use_ff', type=int, default=1,
+                    help='keep feed-forward layer in the refining module?')
+    parser.add_argument('--dropout_aoa', type=float, default=0.3,
+                    help='dropout_aoa in the refining module?')
+
+    parser.add_argument('--ctx_drop', type=int, default=0,
+                    help='apply dropout to the context vector before fed into LSTM?')
+    parser.add_argument('--decoder_type', type=str, default='AoA',
+                    help='AoA, LSTM, base')
+    parser.add_argument('--use_multi_head', type=int, default=2,
+                    help='use multi head attention? 0 for addictive single head; 1 for addictive multi head; 2 for productive multi head.')
+    parser.add_argument('--num_heads', type=int, default=8,
+                    help='number of attention heads?')
+    parser.add_argument('--multi_head_scale', type=int, default=1,
+                    help='scale q,k,v?')
 
     # Evaluation/Checkpointing
     parser.add_argument('--val_images_use', type=int, default=3200,
@@ -177,7 +201,7 @@ def parse_opt():
                     help='')
     parser.add_argument('--structure_after', type=int, default=-1,
                     help='T')
-    parser.add_argument('--structure_loss_type', type=str, default='seqnll',
+    parser.add_argument('--structure_loss_type', type=str, default='new_self_critical',
                     help='')
     parser.add_argument('--struc_use_logsoftmax', action='store_true', help='')
     parser.add_argument('--entropy_reward_weight', type=float, default=0,
@@ -186,7 +210,7 @@ def parse_opt():
                     help='self cider reward')
 
     # Used for self critical or structure. Used when sampling is need during training
-    parser.add_argument('--train_sample_n', type=int, default=16,
+    parser.add_argument('--train_sample_n', type=int, default=5,
                     help='The reward weight from cider')
     parser.add_argument('--train_sample_method', type=str, default='sample',
                     help='')
@@ -197,12 +221,6 @@ def parse_opt():
     parser.add_argument('--sc_sample_method', type=str, default='greedy',
                     help='')
     parser.add_argument('--sc_beam_size', type=int, default=1,
-                    help='')
-
-    # drop_worst applied in google conceptual challenge.
-    parser.add_argument('--drop_worst_after', type=float, default=-1,
-                    help='')
-    parser.add_argument('--drop_worst_rate', type=float, default=0,
                     help='')
 
 
@@ -225,6 +243,38 @@ def parse_opt():
     # 2) Overwrite cfg argument with set_cfgs
     # 3) parse config argument to args.
     # 4) in the end, parse command line argument and overwrite args
+
+    # fine-tune options
+    parser.add_argument('--id_old', type=str, default='', 
+                    help='id of a model to fine-tune')
+    parser.add_argument('--simple_ft', default=False, action='store_true',
+                    help='simple fine-tune without PoE')
+    parser.add_argument('--poe_temp', type=float, default=1,
+                    help='temperature for the base probability')
+    parser.add_argument('--focal_loss', type=str, default='', choices=['focal', 'antifocal', ''], 
+                    help='Focal loss and its variants')
+    parser.add_argument('--focal_gamma', type=float, default=1,
+                    help='weight to amplify confidence in Focal loss')
+    parser.add_argument('--focal_anti_alpha', type=float, default=1,
+                    help='weight for Anti-Focal loss')
+    parser.add_argument('--model_suffix', type=str, default='best', 
+                    help='suffix of the model to fine-tune')
+    
+    # CIDErBtw options
+    parser.add_argument('--use_btw', default=False, action='store_true',
+                    help='use CIDErBtw to compute losses')
+    parser.add_argument('--sim_img_json', type=str, default='data/similar_set_id/method_retrieval_05',
+                    help='path to the json files containing similar image ids')
+    parser.add_argument('--gts_btw_json', type=str, default='data/gts_btw.json',
+                    help='path to the json files containing normalized CiderBtw weights of gts captions')
+    parser.add_argument('--btw_lw', type=float, default=1.5,
+                    help='weight lambda_w of CIDErBtw')
+    parser.add_argument('--btw_aw', type=float, default=0.5,
+                    help='weight alpha_w of CIDErBtw: [0.25, 1.25]')
+
+    # CE+RL options
+    parser.add_argument('--cerl_lambda', type=float, default=0.5,
+                    help='weight to balance CE and RL loss: lambda * RL + (1 - lambda) * CE')
 
     # step 1: read cfg_fn
     args = parser.parse_args()
@@ -263,6 +313,11 @@ def parse_opt():
     # Deal with feature things before anything
     args.use_fc, args.use_att = if_use_feat(args.caption_model)
     if args.use_box: args.att_feat_size = args.att_feat_size + 5
+
+    # Compose sim_img_json path
+    args.sim_img_train = os.path.join(args.sim_img_json, 'similar_train.json')
+    args.sim_img_val = os.path.join(args.sim_img_json, 'similar_val.json')
+    args.sim_img_test = os.path.join(args.sim_img_json, 'similar_test.json')
 
     return args
 

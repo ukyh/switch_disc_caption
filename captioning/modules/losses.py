@@ -2,13 +2,11 @@ import torch
 import torch.nn as nn
 from ..utils.rewards import get_scores, get_self_cider_scores
 
-
 class RewardCriterion(nn.Module):
     def __init__(self):
         super(RewardCriterion, self).__init__()
 
-    def forward(self, input, seq, reward, reduction='mean'):
-        N,L = input.shape[:2]
+    def forward(self, input, seq, reward):
         input = input.gather(2, seq.unsqueeze(2)).squeeze(2)
         
         input = input.reshape(-1)
@@ -16,14 +14,9 @@ class RewardCriterion(nn.Module):
         mask = (seq>0).to(input)
         mask = torch.cat([mask.new(mask.size(0), 1).fill_(1), mask[:, :-1]], 1).reshape(-1)
         output = - input * reward * mask
-        
-        if reduction == 'none':
-            output = output.view(N,L).sum(1) / mask.view(N,L).sum(1)
-        elif reduction == 'mean':
-            output = torch.sum(output) / torch.sum(mask)
+        output = torch.sum(output) / torch.sum(mask)
 
         return output
-
 
 class StructureLosses(nn.Module):
     """
@@ -34,7 +27,7 @@ class StructureLosses(nn.Module):
         self.opt = opt
         self.loss_type = opt.structure_loss_type
 
-    def forward(self, input, seq, data_gts, reduction='mean'):
+    def forward(self, input, seq, data_gts):
         """
         Input is either logits or log softmax
         """
@@ -75,7 +68,7 @@ class StructureLosses(nn.Module):
             input = input.view(-1, seq_per_img)
 
             target = costs.min(1)[1]
-            output = F.cross_entropy(input, target, reduction=reduction)
+            output = F.cross_entropy(input, target)
         elif self.loss_type == 'risk':
             # input is logsoftmax
             input = input * mask
@@ -83,7 +76,6 @@ class StructureLosses(nn.Module):
             input = input.view(-1, seq_per_img)
 
             output = (F.softmax(input.exp()) * costs).sum(1).mean()
-            assert reduction=='mean'
 
             # test
             # avg_scores = input
@@ -101,7 +93,6 @@ class StructureLosses(nn.Module):
             input_star = input.gather(1, __)
             output = F.relu(costs - costs_star - input_star + input).max(1)[0] / 2
             output = output.mean()
-            assert reduction=='mean'
 
             # sanity test
             # avg_scores = input + costs
@@ -124,7 +115,6 @@ class StructureLosses(nn.Module):
             input_star = input.gather(1, __)
             output = F.relu(costs - costs_star - input_star + input)
             output = output.mean()
-            assert reduction=='mean'
 
             # sanity test
             # avg_scores = input + costs
@@ -139,7 +129,7 @@ class StructureLosses(nn.Module):
 
             input = input + costs
             target = costs.min(1)[1]
-            output = F.cross_entropy(input, target, reduction=reduction)
+            output = F.cross_entropy(input, target)
 
         elif self.loss_type == 'real_softmax_margin':
             # input is logits
@@ -151,7 +141,7 @@ class StructureLosses(nn.Module):
 
             input = input + costs
             target = costs.min(1)[1]
-            output = F.cross_entropy(input, target, reduction=reduction)
+            output = F.cross_entropy(input, target)
 
         elif self.loss_type == 'new_self_critical':
             """
@@ -169,10 +159,7 @@ class StructureLosses(nn.Module):
                 _scores = _scores.expand_as(scores - 1)
                 scores += self.opt.self_cider_reward_weight * _scores
             output = - input * mask * scores.view(-1, 1)
-            if reduction == 'none':
-                output = output.sum(1) / mask.sum(1)
-            elif reduction == 'mean':
-                output = torch.sum(output) / torch.sum(mask)
+            output = torch.sum(output) / torch.sum(mask)
 
         out['loss'] = output
         return out
@@ -181,24 +168,28 @@ class LanguageModelCriterion(nn.Module):
     def __init__(self):
         super(LanguageModelCriterion, self).__init__()
 
-    def forward(self, input, target, mask, reduction='mean'):
+    def forward(self, input, target, mask, btw_score=None):
         if target.ndim == 3:
             target = target.reshape(-1, target.shape[2])
             mask = mask.reshape(-1, mask.shape[2])
-        N,L = input.shape[:2]
         # truncate to the same size
         target = target[:, :input.size(1)]
         mask = mask[:, :input.size(1)].to(input)
 
         output = -input.gather(2, target.unsqueeze(2)).squeeze(2) * mask
+        if btw_score is not None:
+            btw_score = torch.cat([btw_score, btw_score[:, 0].unsqueeze(1)], dim=1)    # (batch * seq_per_img, 16 + 1)
+            btw_score = btw_score[:, :input.size(1)].to(input)
+            output = output * btw_score
 
-        if reduction == 'none':
-            output = output.view(N,L).sum(1) / mask.view(N,L).sum(1)
-        elif reduction == 'mean':
-            output = torch.sum(output) / torch.sum(mask)
+        # Average over each token
+        output = torch.sum(output) / torch.sum(mask)
+
+        # K = 5
+        # print(input.exp().topk(k=K, dim=-1)[0])
+        # print("Top {} prob: {}".format(K, input.exp().topk(k=K, dim=-1)[0].sum(-1).mean()))
 
         return output
-
 
 class LabelSmoothing(nn.Module):
     "Implement label smoothing."
@@ -211,8 +202,11 @@ class LabelSmoothing(nn.Module):
         # self.size = size
         self.true_dist = None
         
-    def forward(self, input, target, mask, reduction='mean'):
-        N,L = input.shape[:2]
+    def forward(self, input, target, mask, btw_score=None):
+        assert btw_score == None, "Currently, label smoothing is not supported in Btw"
+        if target.ndim == 3:
+            target = target.reshape(-1, target.shape[2])
+            mask = mask.reshape(-1, mask.shape[2])
         # truncate to the same size
         target = target[:, :input.size(1)]
         mask =  mask[:, :input.size(1)]
@@ -231,11 +225,4 @@ class LabelSmoothing(nn.Module):
         # true_dist[:, self.padding_idx] = 0
         # mask = torch.nonzero(target.data == self.padding_idx)
         # self.true_dist = true_dist
-        output = self.criterion(input, true_dist).sum(1) * mask
-        
-        if reduction == 'none':
-            output = output.view(N,L).sum(1) / mask.view(N,L).sum(1)
-        elif reduction == 'mean':
-            output = torch.sum(output) / torch.sum(mask)
-
-        return output
+        return (self.criterion(input, true_dist).sum(1) * mask).sum() / mask.sum()

@@ -10,6 +10,7 @@ import torch.optim as optim
 import os
 
 import torch.nn.functional as F
+from torch.autograd import Variable
 
 import six
 from six.moves import cPickle
@@ -157,7 +158,7 @@ def length_average(length, logprobs, alpha=0.):
     return logprobs / length
 
 
-class NoamOpt(torch.optim.Optimizer):
+class NoamOpt(object):
     "Optim wrapper that implements rate."
     def __init__(self, model_size, factor, warmup, optimizer):
         self.optimizer = optimizer
@@ -167,14 +168,14 @@ class NoamOpt(torch.optim.Optimizer):
         self.model_size = model_size
         self._rate = 0
         
-    def step(self, *args, **kwargs):
+    def step(self):
         "Update parameters and rate"
         self._step += 1
         rate = self.rate()
         for p in self.optimizer.param_groups:
             p['lr'] = rate
         self._rate = rate
-        self.optimizer.step(*args, **kwargs)
+        self.optimizer.step()
         
     def rate(self, step = None):
         "Implement `lrate` above"
@@ -198,16 +199,16 @@ class NoamOpt(torch.optim.Optimizer):
             del state_dict['_step']
         self.optimizer.load_state_dict(state_dict)
 
-class ReduceLROnPlateau(torch.optim.Optimizer):
+class ReduceLROnPlateau(object):
     "Optim wrapper that implements rate."
     def __init__(self, optimizer, mode='min', factor=0.1, patience=10, verbose=False, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08):
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode, factor, patience, verbose, threshold, threshold_mode, cooldown, min_lr, eps)
         self.optimizer = optimizer
         self.current_lr = get_lr(optimizer)
         
-    def step(self, *args, **kwargs):
+    def step(self):
         "Update parameters and rate"
-        self.optimizer.step(*args, **kwargs)
+        self.optimizer.step()
 
     def scheduler_step(self, val):
         self.scheduler.step(val)
@@ -248,3 +249,21 @@ def get_std_opt(model, optim_func='adam', factor=1, warmup=2000):
                       adamw=torch.optim.AdamW)[optim_func]
     return NoamOpt(model.d_model, factor, warmup,
             optim_func(model.parameters(), lr=0, betas=(0.9, 0.98), eps=1e-9))
+
+def var_wrapper(x, cuda=True, volatile=False):
+    if type(x) is dict:
+        return {k: var_wrapper(v, cuda, volatile) for k,v in x.items()}
+    if type(x) is list or type(x) is tuple:
+        return [var_wrapper(v, cuda, volatile) for v in x]
+    if isinstance(x, np.ndarray):
+        x = torch.from_numpy(x)
+    if cuda:
+        x = x.cuda()
+    else:
+        x = x.cpu()
+    if torch.is_tensor(x):
+        x = Variable(x, volatile=volatile)
+    if isinstance(x, Variable) and volatile!=x.volatile:
+        x = Variable(x.data, volatile=volatile)
+    return x
+

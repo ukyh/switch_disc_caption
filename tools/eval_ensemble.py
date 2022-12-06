@@ -22,11 +22,16 @@ import torch
 # Input arguments and options
 parser = argparse.ArgumentParser()
 # Input paths
-parser.add_argument('--ids', nargs='+', required=True, help='id of the models to ensemble')
+# parser.add_argument('--ids', nargs='+', required=True, help='id of the models to ensemble')
 parser.add_argument('--weights', nargs='+', required=False, default=None, help='id of the models to ensemble')
-# parser.add_argument('--models', nargs='+', required=True
-#                 help='path to model to evaluate')
-# parser.add_argument('--infos_paths', nargs='+', required=True, help='path to infos to evaluate')
+parser.add_argument('--models', nargs='+', required=True, help='path to model to evaluate')
+parser.add_argument('--infos_paths', nargs='+', required=True, help='path to infos to evaluate')
+parser.add_argument('--rank_eval', type=float, default=0,
+                help='do (1) or do not (0) evaluate R@K')
+parser.add_argument('--tau_norm', type=float, default=0,
+                help='tau to normalize classifier norms')
+parser.add_argument('--tau_logit', type=float, default=1,
+                help='tau to normalize classifier logits')
 opts.add_eval_options(parser)
 opts.add_diversity_opts(parser)
 
@@ -34,14 +39,17 @@ opt = parser.parse_args()
 
 model_infos = []
 model_paths = []
-for id in opt.ids:
-    if '-' in id:
-        id, app = id.split('-')
-        app = '-'+app
-    else:
-        app = ''
-    model_infos.append(utils.pickle_load(open('log_%s/infos_%s%s.pkl' %(id, id, app), 'rb')))
-    model_paths.append('log_%s/model%s.pth' %(id,app))
+# for id in opt.ids:
+#     if '-' in id:
+#         id, app = id.split('-')
+#         app = '-'+app
+#     else:
+#         app = ''
+#     model_infos.append(utils.pickle_load(open('log_%s/infos_%s%s.pkl' %(id, id, app), 'rb')))
+#     model_paths.append('log_%s/model%s.pth' %(id,app))
+for info, param_path in zip(opt.infos_paths, opt.models):    # specify the exact path
+    model_infos.append(utils.pickle_load(open(info, 'rb')))
+    model_paths.append(param_path)
 
 # Load one infos
 infos = model_infos[0]
@@ -58,22 +66,26 @@ opt.use_box = max([getattr(infos['opt'], 'use_box', 0) for infos in model_infos]
 assert max([getattr(infos['opt'], 'norm_att_feat', 0) for infos in model_infos]) == max([getattr(infos['opt'], 'norm_att_feat', 0) for infos in model_infos]), 'Not support different norm_att_feat'
 assert max([getattr(infos['opt'], 'norm_box_feat', 0) for infos in model_infos]) == max([getattr(infos['opt'], 'norm_box_feat', 0) for infos in model_infos]), 'Not support different norm_box_feat'
 
+
 vocab = infos['vocab'] # ix -> word mapping
+for _info in model_infos:
+    assert _info['vocab'] == vocab  # check the vocab compatibility just in case
+print('opt', opt)
 
 # Setup the model
-from models.AttEnsemble import AttEnsemble
+from captioning.models.AttEnsemble import AttEnsemble
 
 _models = []
 for i in range(len(model_infos)):
     model_infos[i]['opt'].start_from = None
-    model_infos[i]['opt'].vocab = vocab
+    model_infos[i]['opt'].vocab = vocab     # foce the same vocab
     tmp = models.setup(model_infos[i]['opt'])
     tmp.load_state_dict(torch.load(model_paths[i]))
     _models.append(tmp)
 
-if opt.weights is not None:
+if opt.weights is not None: # ensemble weights
     opt.weights = [float(_) for _ in opt.weights]
-model = AttEnsemble(_models, weights=opt.weights)
+model = AttEnsemble(opt, vocab, _models, weights=opt.weights)
 model.seq_length = opt.max_length
 model.cuda()
 model.eval()
@@ -91,15 +103,18 @@ else:
 # So make sure to use the vocab in infos file.
 loader.ix_to_word = infos['vocab']
 
-opt.id = '+'.join([_+str(__) for _,__ in zip(opt.ids, opt.weights)])
+# opt.id = '+'.join([_+str(__) for _,__ in zip(opt.ids, opt.weights)])
+
 # Set sample options
-loss, split_predictions, lang_stats = eval_utils.eval_split(model, crit, loader, 
-    vars(opt))
+assert opt.rank_eval == 0, 'Currently, rank eval is not supported in ensemble'
+loss, split_predictions, lang_stats = eval_utils.eval_split(
+    model, None, crit, loader,
+    vars(opt))  # None for model_with_vse
 
 print('loss: ', loss)
 if lang_stats:
   print(lang_stats)
 
-if opt.dump_json == 1:
-    # dump the json
-    json.dump(split_predictions, open('vis/vis.json', 'w'))
+# if opt.dump_json == 1:
+#     # dump the json
+#     json.dump(split_predictions, open('vis/vis.json', 'w'))
