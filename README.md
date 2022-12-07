@@ -1,6 +1,6 @@
 # Switch to Discriminative Image Captioning
 
-The code for our paper, **[Switching to Discriminative Image Captioning by Relieving a Bottleneck of Reinforcement Learning]()** (WACV 2023).
+The code for our paper, **[Switching to Discriminative Image Captioning by Relieving a Bottleneck of Reinforcement Learning](https://arxiv.org/abs/2212.03230)** (WACV 2023).
 Our methods implemented here provide a **switch to discriminative image captioning**: given off-the-shelf captioning models trained with reinforcement learning, our methods enable them to describe characteristic details of input images with only a lightweight fine-tuning.
 
 
