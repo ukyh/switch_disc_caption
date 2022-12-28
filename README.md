@@ -55,7 +55,7 @@ python scripts/prepro_ngrams.py --input_json data/dataset_coco.json --dict_json 
 Run `sh expt_scripts/[SELECT_SCRIPT].sh`.  
 It returns a fine-tuned model under `saved_models` and `.json` output files (MS COCO Karpathy val/test split) under `eval_results`.
 
-We release the fine-tuned models and output files [here](https://drive.google.com/drive/folders/1MtTL9VwpZvhr_5PK9WgXeySyi56tzItc?usp=sharing).
+We have released the fine-tuned models and output files [here](https://drive.google.com/drive/folders/1MtTL9VwpZvhr_5PK9WgXeySyi56tzItc?usp=sharing).
 
 
 ### Evaluation
